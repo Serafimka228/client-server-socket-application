@@ -35,8 +35,8 @@ class commands:
             send_message(
                 client.get_socket(), "Connection closed".encode(encoding="UTF-8")
             )
-            disconnect_client(client.get_ip_address())
-            client_socket.close()
+            disconnect_client(client)
+            client.get_socket().close()
             return True
         except Exception as e:
             logger.error(f"QUIT Exception: {e}")
@@ -106,7 +106,7 @@ def send_message(client_socket: socket, message: bytes) -> None:
 
 
 def send_current_dir(request: str, client: Client) -> None:
-    request = request.split()[0].upper()
+    request: str = request.split()[0].upper()
     if request != "QUIT":
         current_dir = client.get_current_catalog() + " $ "
         send_message(client.get_socket(), current_dir.encode(encoding="UTF-8"))
@@ -114,7 +114,7 @@ def send_current_dir(request: str, client: Client) -> None:
 
 def execute_command(request: str, client: Client) -> None:
     try:
-        command_name = request.split()[0].upper()
+        command_name: str = request.split()[0].upper()
         command = list_of_commands.get(command_name, None)
         if command != None:
             if not command(request, client):

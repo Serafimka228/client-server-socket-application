@@ -73,6 +73,9 @@ def disconnect_client(client: Client) -> bool:
     try:
         if client in list_of_connected_clients:
             list_of_connected_clients.remove(client)
+        from server.server import selector
+
+        selector.unregister(client.get_socket())
         return True
     except Exception as e:
         logger.error(f"Disconnect client error || Exception: {e}")
