@@ -53,12 +53,12 @@ def handle_request(client: Client) -> None:
     try:
         if not client:
             return
+
         request = client.get_socket().recv(4096)
         if not request:
             disconnect_client(client)
             logger.debug(f"Connection lost with {client.get_address()}")
             return
-
         request = request.decode(encoding="UTF-8")
         if request == "\n":
             request = "None"

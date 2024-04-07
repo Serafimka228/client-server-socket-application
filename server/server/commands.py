@@ -11,7 +11,7 @@ class commands:
     def ECHO(request: str, client: Client) -> bool:
         try:
             request = re.sub(r"echo ", "", request, 1, flags=re.IGNORECASE)
-            send_message(client.get_socket(), request.encode(encoding="UTF-8"))
+            send_message(client.get_socket(), f"{request}\n".encode(encoding="UTF-8"))
             return True
         except Exception as e:
             logger.error(f"ECHO Exception: {e}")
