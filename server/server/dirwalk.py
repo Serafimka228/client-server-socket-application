@@ -32,6 +32,7 @@ def update_list_of_accessable_paths() -> None:
 
 def main():
     dirls = list_directories("root\\")
+    print(dirls)
 
 
 if __name__ == "__main__":

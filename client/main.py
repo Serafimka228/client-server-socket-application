@@ -5,9 +5,7 @@ from client.client import connect_to_server, receive_data, init_socket, start_cl
 
 def main() -> None:
     client_socket: socket = init_socket()
-    if not connect_to_server(client_socket):
-        sys.exit(1)
-        print(4)
+    connect_to_server(client_socket)
     start_client(client_socket)
 
 

@@ -10,9 +10,23 @@ from clients.client import (
     disconnect_client,
 )
 from .dirwalk import update_list_of_accessable_paths
+from .myselector import selector
 
 
-selector = selectors.DefaultSelector()
+def init_server(address: str, port: int) -> socket:
+    logger.debug("server init")
+    try:
+        update_list_of_accessable_paths()
+        server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        server_socket.bind((address, port))
+        server_socket.listen()
+        server_socket.setblocking(False)
+        selector.register(server_socket, selectors.EVENT_READ, accept_connection)
+        return server_socket
+    except (Exception, KeyboardInterrupt) as e:
+        logger.error(f"server init error || Exception: {e}")
+        return None
 
 
 def accept_connection(server_socket: socket) -> None:
@@ -33,28 +47,12 @@ def accept_connection(server_socket: socket) -> None:
             logger.error(f"Connection acception error || Exception:{e}")
 
 
-def init_server(address: str, port: int) -> socket:
-    logger.debug("server init")
-    try:
-        update_list_of_accessable_paths()
-        server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        server_socket.bind((address, port))
-        server_socket.listen()
-        server_socket.setblocking(False)
-        selector.register(server_socket, selectors.EVENT_READ, accept_connection)
-        return server_socket
-    except (Exception, KeyboardInterrupt) as e:
-        logger.error(f"server init error || Exception: {e}")
-        return None
-
-
 def handle_request(client: Client) -> None:
     try:
         if not client:
             return
 
-        request = client.get_socket().recv(4096)
+        request = client.get_socket().recv(1024)
         if not request:
             disconnect_client(client)
             logger.debug(f"Connection lost with {client.get_address()}")
@@ -64,8 +62,9 @@ def handle_request(client: Client) -> None:
             request = "None"
         execute_command(request, client)
         send_current_dir(request, client)
-    except (Exception, ConnectionResetError) as e:
+    except (socket.error, socket.timeout, ConnectionResetError) as e:
         logger.error(f"Connection lost with {client.get_address()} || Exception:{e}")
+        disconnect_client(client)
 
 
 def start_server(server_socket: socket) -> None:
