@@ -79,6 +79,14 @@ class commands:
             logger.error(f"LIST Exception: {e}")
             return False
 
+    ##  проверяю существует ли файл
+    ##  если существует то:
+    ##      отправляю {позицию в файле}
+    ##      получаю файл, записывая с определенной позиции
+    ##  иначе:
+    ##      отправляю OK
+    ##      получаю файл
+
     @staticmethod
     def UPLOAD(request: str, client: Client) -> bool:
         try:
@@ -91,15 +99,28 @@ class commands:
             file_name: str = match.group(1)
             file_path: str = client.get_current_catalog()
             file_name: str = os.path.join(file_path, file_name)
-            with open(file_name, "wb") as f:
-                received_bytes: int = 0
-                while received_bytes < file_size:
-                    data: bytes = client.get_socket().recv(1024)
-                    if not data:
-                        break
-                    else:
-                        f.write(data)
-                    received_bytes += 1024
+            #
+            received_bytes: int = 0
+            if os.path.exists(file_name):
+                received_bytes = os.path.getsize(file_name)
+                f = open(file_name, "ab")
+                f.seek(received_bytes)
+                send_message(
+                    client.get_socket(), f"{received_bytes}".encode(encoding="UTF-8")
+                )
+            else:
+                send_message(client.get_socket(), "OK".encode(encoding="UTF-8"))
+                f = open(file_name, "wb")
+            #
+            while received_bytes < file_size:
+                data: bytes = client.get_socket().recv(1024)
+                if not data:
+                    break
+                else:
+                    f.write(data)
+                received_bytes += 1024
+
+            f.close()
             selector.register(client.get_socket(), selectors.EVENT_READ, client)
             client.get_socket().setblocking(False)
             return True
@@ -107,23 +128,37 @@ class commands:
             logger.error(f"UPLOAD exception: {e}")
             return False
 
+    ##  получаю запрос
+    ##  если запрос содержит в себе смещение:   (1)
+    ##      отправляю файл со смещения
+    ##  иначе:
+    ##      отправляю файл
+
     @staticmethod
     def DOWNLOAD(request: str, client: Client) -> bool:
         try:
             client.get_socket().setblocking(True)
             request: str = re.sub(r"download ", "", request, 1, flags=re.IGNORECASE)
-            file_name: str = f"{client.get_current_catalog()}{request}"
+            if "," in request:  # (1)
+                send_bytes = int(request.split(",", 1)[1])
+                print(send_bytes)
+            else:
+                send_bytes = 0
+            file_name: str = request.split(",")[0]
+            file_name = f"{client.get_current_catalog()}{file_name}"
             file_size: int = os.path.getsize(file_name)
+            header: bytes = f"{file_name},{str(file_size)}".encode(encoding="UTF-8")
             with open(file_name, "rb") as f:
-                send_message(
-                    client.get_socket(),
-                    f"{file_name},{str(file_size)}".encode(encoding="UTF-8"),
-                )
-                while True:
-                    data: bytes = f.read(1024)
-                    if not data:
-                        break
-                    send_message(client.get_socket(), data)
+                send_message(client.get_socket(), header)
+                if send_bytes != file_size:
+                    f.seek(send_bytes)
+                    while True:
+                        data: bytes = f.read(1024)
+                        if not data:
+                            break
+                        send_message(client.get_socket(), data)
+                else:
+                    print("already downloaded")
             client.get_socket().setblocking(False)
             return True
         except (FileNotFoundError, AttributeError, PermissionError) as e:

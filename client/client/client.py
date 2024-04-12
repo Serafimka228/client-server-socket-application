@@ -63,24 +63,53 @@ def connect_to_server(client_socket: socket) -> None:
         sys.exit(1)
 
 
+##  отправляю UPLOAD {имя файла},{размер}
+##  получаю ответ                                   (2)
+##  если ответ OK:                                  (3)
+##      отправляю файл
+##  иначе в отмете будет смещение в файле:
+##      отправляю файл со смещения
+
+
 def upload_file(client_socket: socket, request: str) -> None:
     global current_mode
     client_socket.setblocking(True)
     file_name: str = re.sub(r"upload ", "", request, 1, flags=re.IGNORECASE)
     file_size: int = os.path.getsize(file_name)
     send_data(client_socket, f"{file_name},{file_size}")
-    with open(file_name, "rb") as f:
+    server_answer = receive_data(client_socket).decode(encoding="UTF-8")
+    if server_answer == "OK":  # (3)
+        f = open(file_name, "rb")
         progress_bar = tqdm.tqdm(
             unit="B", unit_scale=True, unit_divisor=1000, total=int(file_size)
         )
-        while True:
-            data: bytes = f.read(1024)
-            if not data:
-                break
-            client_socket.sendall(data)
-            progress_bar.update(1024)
-        current_mode = "NORMAL"
+    else:
+        uploaded_bytes: int = int(server_answer)
+        f = open(file_name, "rb")
+        f.seek(uploaded_bytes)
+        progress_bar = tqdm.tqdm(
+            unit="B",
+            unit_scale=True,
+            unit_divisor=1000,
+            total=int(file_size),
+            initial=uploaded_bytes,
+        )
+    while True:
+        data: bytes = f.read(1024)
+        if not data:
+            break
+        client_socket.sendall(data)
+        progress_bar.update(1024)
+    current_mode = "NORMAL"
+    f.close()
     client_socket.setblocking(False)
+
+
+##  проверяю существует ли файл                     (1)
+##  если существует то:
+##      отправляю DOWNLOAD {имя файла},{позицию}    (2)
+##  иначе:
+##      отправляю DOWNLOAD {имя файла}              (3)
 
 
 def download_file(client_socket: socket) -> None:
@@ -90,21 +119,64 @@ def download_file(client_socket: socket) -> None:
     match = re.match(r"([^,]+),([^,]+)", header)
     file_size = int(match.group(2))
     file_name = re.search(r"\\([^\\]+)$", match.group(1)).group(1)
-    with open(file_name, "wb") as f:
+    received_bytes = 0
+    if os.path.exists(file_name):
+        received_bytes = os.path.getsize(file_name)
+        f = open(file_name, "ab")
+        f.seek(received_bytes)
+        progress_bar = tqdm.tqdm(
+            unit="B",
+            unit_scale=True,
+            unit_divisor=1000,
+            total=int(file_size),
+            initial=received_bytes,
+        )
+    else:
+        f = open(file_name, "wb")
         progress_bar = tqdm.tqdm(
             unit="B", unit_scale=True, unit_divisor=1000, total=int(file_size)
         )
-        received_bytes = 0
-        while received_bytes < file_size:
+    while received_bytes < file_size:
+        try:
             data: bytes = client_socket.recv(1024)
             if not data:
                 current_mode = "NORMAL"
+                break
             else:
+                #
+                # if len(data) + received_bytes >= file_size:
+                #    break
+                #
                 f.write(data)
-            progress_bar.update(1024)
-            received_bytes += 1024
+            progress_bar.update(len(data))
+            received_bytes += len(data)
+        except socket.error:
+            break
+    f.close()
     current_mode = "NORMAL"
     client_socket.setblocking(False)
+
+
+##  проверяю существует ли файл                     (1)
+##  если существует то:
+##      отправляю DOWNLOAD {имя файла},{позицию}    (2)
+##  иначе:
+##      отправляю DOWNLOAD {имя файла}              (3)
+
+
+def create_header(user_input: str) -> str:
+    file_name: str = re.sub(r"download ", "", user_input, 1, flags=re.IGNORECASE)
+    file_name = file_name.rsplit("/", 1)[-1]
+    ######################ERORRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR
+    if os.path.exists(file_name):  #################################HERE
+        received_bytes: int = os.path.getsize(file_name)
+        full_file_name: str = re.sub(
+            r"download ", "", user_input, 1, flags=re.IGNORECASE
+        )
+        header: str = f"{user_input},{received_bytes}"
+    else:
+        header: str = f"{user_input}"
+    return header
 
 
 def check_events(client_socket: socket, events: list[tuple]) -> None:
@@ -130,6 +202,9 @@ def check_events(client_socket: socket, events: list[tuple]) -> None:
                     return
                 if re.match(r"^download ", user_input, re.IGNORECASE):
                     current_mode = "DOWNLOAD"
+                    header = create_header(user_input)
+                    send_data(client_socket, header)
+                    return
                 send_data(client_socket, user_input)
 
 
@@ -141,3 +216,8 @@ def start_client(client_socket: socket) -> None:
     except (socket.timeout, socket.error, AttributeError) as e:
         print(f"Server closed connection: {e}")
         sys.exit(1)
+
+
+if __name__ == "__main__":
+    if os.path.exists("karina.jpg"):
+        print(1)
